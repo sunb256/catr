@@ -39,6 +39,7 @@ func main() {
 
 func parseOptions(args []string) (options, error) {
 	cfg, _ := readConfig()
+	args = reorderArgs(args)
 	fs := flag.NewFlagSet("catr", flag.ContinueOnError)
 	fs.SetOutput(os.Stderr)
 	level := fs.Int("l", cfg.level, "max directory depth")
@@ -58,6 +59,32 @@ func parseOptions(args []string) (options, error) {
 		return options{}, errors.New("-l must be >= 0")
 	}
 	return options{root: root, level: *level, files: files}, nil
+}
+
+func reorderArgs(args []string) []string {
+	opts := []string{}
+	pos := []string{}
+	for i := 0; i < len(args); i++ {
+		arg := args[i]
+		if arg == "-f" || arg == "-l" {
+			opts = append(opts, arg)
+			if i+1 < len(args) {
+				i++
+				opts = append(opts, args[i])
+			}
+			continue
+		}
+		if strings.HasPrefix(arg, "-f=") || strings.HasPrefix(arg, "-l=") {
+			opts = append(opts, arg)
+			continue
+		}
+		if strings.HasPrefix(arg, "-") {
+			opts = append(opts, arg)
+			continue
+		}
+		pos = append(pos, arg)
+	}
+	return append(opts, pos...)
 }
 
 func collectTargets(opts options) ([]string, error) {

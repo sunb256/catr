@@ -67,6 +67,37 @@ func TestParseToml(t *testing.T) {
 	}
 }
 
+func TestParseOptionsFlagsAfterRoot(t *testing.T) {
+	root := t.TempDir()
+	mustWrite(t, filepath.Join(root, "a.txt"), "a")
+
+	opts, err := parseOptions([]string{root, "-f", "a.txt"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if opts.root != root {
+		t.Fatalf("want root=%s, got %s", root, opts.root)
+	}
+	want := []string{"a.txt"}
+	if !reflect.DeepEqual(opts.files, want) {
+		t.Fatalf("want files=%v, got %v", want, opts.files)
+	}
+}
+
+func TestParseOptionsLevelAfterRoot(t *testing.T) {
+	root := t.TempDir()
+	opts, err := parseOptions([]string{root, "-l", "2"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if opts.level != 2 {
+		t.Fatalf("want level=2, got %d", opts.level)
+	}
+	if opts.root != root {
+		t.Fatalf("want root=%s, got %s", root, opts.root)
+	}
+}
+
 func mustWrite(t *testing.T, path, body string) {
 	t.Helper()
 	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
