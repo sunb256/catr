@@ -1,1 +1,46 @@
-task: []
+task:
+  - id: "1"
+    url: "https://github.com/sunb256/catr/pull/1"
+    title: "feat: add catr source dump CLI"
+    action: |
+      カレントフォルダにあるgitリポジトリをcatrとすると、ソースコード一式を出力するツールを作りたい
+
+      基本的な使い方
+      ```
+      catr .
+      ```
+
+      出力例
+      ----------
+
+      ./<path-to-file-1>
+      ```<使用言語>
+      実際のソースコード
+      ```
+
+      ./<path-to-file-2>
+      ```<使用言語>
+      実際のソースコード
+      ```
+
+      ----------
+
+      仕様
+
+       - .gitignoreにあるファイルは指定がない限りは出力しない
+       - 設定は~/.config/catr.toml ファイルがあればそれを参照する
+
+      応用コマンド
+      ```
+      # 2階層までを出力
+      catr . -l 2
+
+      # ファイル1、ファイル2のみを出力
+      catr . -f ファイル1 ファイル2
+      ```
+
+      実装ルール
+
+       - go-langで実装
+       - 複数OSで動作可能とする(windows, linux, mac)
+       - シングルバイナリで動く
