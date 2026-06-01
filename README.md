@@ -17,10 +17,34 @@
 go build -o catr ./cmd/catr
 ```
 
+## Install (make `catr` available in PATH)
+
+macOS/Linux (user-local):
+
+```bash
+mkdir -p ~/bin
+cp ./catr ~/bin/catr
+echo 'export PATH="$HOME/bin:$PATH"' >> ~/.zshrc
+source ~/.zshrc
+```
+
+Homebrew prefix example:
+
+```bash
+cp ./catr /opt/homebrew/bin/catr
+```
+
+Verify:
+
+```bash
+which catr
+catr -f go.mod .
+```
+
 ## Usage
 
 ```bash
-./catr [path] [-l depth] [-f file ...]
+catr [path] [-l depth] [-f file ...]
 ```
 
 - `path`: target directory (default: `.`)
@@ -32,25 +56,25 @@ go build -o catr ./cmd/catr
 Basic:
 
 ```bash
-./catr .
+catr .
 ```
 
 Depth limit:
 
 ```bash
-./catr . -l 2
+catr . -l 2
 ```
 
 Specific files:
 
 ```bash
-./catr -f go.mod -f cmd/catr/main.go .
+catr -f go.mod -f cmd/catr/main.go .
 ```
 
 `-f` after path is also supported:
 
 ```bash
-./catr . -f cmd/catr/main.go
+catr . -f cmd/catr/main.go
 ```
 
 ## Config (`~/.config/catr.toml`)
