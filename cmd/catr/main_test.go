@@ -98,6 +98,20 @@ func TestParseOptionsLevelAfterRoot(t *testing.T) {
 	}
 }
 
+func TestDetectLangVB(t *testing.T) {
+	got := detectLang("sample.vb")
+	if got != "vbnet" {
+		t.Fatalf("want vbnet, got %s", got)
+	}
+}
+
+func TestDetectLangSQL(t *testing.T) {
+	got := detectLang("schema.sql")
+	if got != "sql" {
+		t.Fatalf("want sql, got %s", got)
+	}
+}
+
 func mustWrite(t *testing.T, path, body string) {
 	t.Helper()
 	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
