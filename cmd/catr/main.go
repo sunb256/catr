@@ -39,25 +39,79 @@ func main() {
 
 func parseOptions(args []string) (options, error) {
 	cfg, _ := readConfig()
+	args = reorderArgs(args)
 	fs := flag.NewFlagSet("catr", flag.ContinueOnError)
 	fs.SetOutput(os.Stderr)
 	level := fs.Int("l", cfg.level, "max directory depth")
-	var files listFlag
-	if len(cfg.files) > 0 {
-		files = append(files, cfg.files...)
-	}
-	fs.Var(&files, "f", "target files")
+	var cliFiles listFlag
+	fs.Var(&cliFiles, "f", "target files")
 	if err := fs.Parse(args); err != nil {
 		return options{}, err
-	}
-	root := "."
-	if fs.NArg() > 0 {
-		root = fs.Arg(0)
 	}
 	if *level < 0 {
 		return options{}, errors.New("-l must be >= 0")
 	}
+	root, files := resolveArgs(fs.Args(), cliFiles, cfg.files)
 	return options{root: root, level: *level, files: files}, nil
+}
+
+func resolveArgs(pos []string, cliFiles []string, cfgFiles []string) (string, []string) {
+	root := "."
+	if len(pos) == 0 {
+		return root, pickFiles(cliFiles, cfgFiles)
+	}
+	if len(pos) > 1 {
+		files := append([]string{}, cliFiles...)
+		return root, append(files, pos...)
+	}
+	if len(cliFiles) > 0 {
+		return pos[0], cliFiles
+	}
+	if isFile(pos[0]) {
+		return root, []string{pos[0]}
+	}
+	return pos[0], cfgFiles
+}
+
+func pickFiles(cliFiles []string, cfgFiles []string) []string {
+	if len(cliFiles) > 0 {
+		return cliFiles
+	}
+	return cfgFiles
+}
+
+func isFile(path string) bool {
+	info, err := os.Stat(path)
+	if err != nil {
+		return false
+	}
+	return !info.IsDir()
+}
+
+func reorderArgs(args []string) []string {
+	opts := []string{}
+	pos := []string{}
+	for i := 0; i < len(args); i++ {
+		arg := args[i]
+		if arg == "-f" || arg == "-l" {
+			opts = append(opts, arg)
+			if i+1 < len(args) {
+				i++
+				opts = append(opts, args[i])
+			}
+			continue
+		}
+		if strings.HasPrefix(arg, "-f=") || strings.HasPrefix(arg, "-l=") {
+			opts = append(opts, arg)
+			continue
+		}
+		if strings.HasPrefix(arg, "-") {
+			opts = append(opts, arg)
+			continue
+		}
+		pos = append(pos, arg)
+	}
+	return append(opts, pos...)
 }
 
 func collectTargets(opts options) ([]string, error) {
@@ -326,6 +380,7 @@ func detectLang(path string) string {
 		".js":   "javascript",
 		".jsx":  "jsx",
 		".json": "json",
+		".sql":  "sql",
 		".yml":  "yaml",
 		".yaml": "yaml",
 		".md":   "markdown",
@@ -335,6 +390,7 @@ func detectLang(path string) string {
 		".toml": "toml",
 		".rs":   "rust",
 		".java": "java",
+		".vb":   "vbnet",
 		".c":    "c",
 		".h":    "c",
 		".cpp":  "cpp",

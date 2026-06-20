@@ -67,6 +67,111 @@ func TestParseToml(t *testing.T) {
 	}
 }
 
+func TestParseOptionsFlagsAfterRoot(t *testing.T) {
+	root := t.TempDir()
+	mustWrite(t, filepath.Join(root, "a.txt"), "a")
+
+	opts, err := parseOptions([]string{root, "-f", "a.txt"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if opts.root != root {
+		t.Fatalf("want root=%s, got %s", root, opts.root)
+	}
+	want := []string{"a.txt"}
+	if !reflect.DeepEqual(opts.files, want) {
+		t.Fatalf("want files=%v, got %v", want, opts.files)
+	}
+}
+
+func TestParseOptionsLevelAfterRoot(t *testing.T) {
+	root := t.TempDir()
+	opts, err := parseOptions([]string{root, "-l", "2"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if opts.level != 2 {
+		t.Fatalf("want level=2, got %d", opts.level)
+	}
+	if opts.root != root {
+		t.Fatalf("want root=%s, got %s", root, opts.root)
+	}
+}
+
+func TestParseOptionsPositionalFiles(t *testing.T) {
+	opts, err := parseOptions([]string{"a.txt", "b.txt"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if opts.root != "." {
+		t.Fatalf("want root=., got %s", opts.root)
+	}
+	want := []string{"a.txt", "b.txt"}
+	if !reflect.DeepEqual(opts.files, want) {
+		t.Fatalf("want files=%v, got %v", want, opts.files)
+	}
+}
+
+func TestParseOptionsSingleFile(t *testing.T) {
+	root := t.TempDir()
+	path := filepath.Join(root, "a.txt")
+	mustWrite(t, path, "a")
+
+	wd, err := os.Getwd()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Chdir(root); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() {
+		if err := os.Chdir(wd); err != nil {
+			t.Fatal(err)
+		}
+	})
+
+	opts, err := parseOptions([]string{"a.txt"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if opts.root != "." {
+		t.Fatalf("want root=., got %s", opts.root)
+	}
+	want := []string{"a.txt"}
+	if !reflect.DeepEqual(opts.files, want) {
+		t.Fatalf("want files=%v, got %v", want, opts.files)
+	}
+}
+
+func TestResolveArgsPositionalFilesOverrideConfig(t *testing.T) {
+	root, files := resolveArgs(
+		[]string{"a.txt", "b.txt"},
+		nil,
+		[]string{"config.txt"},
+	)
+	if root != "." {
+		t.Fatalf("want root=., got %s", root)
+	}
+	want := []string{"a.txt", "b.txt"}
+	if !reflect.DeepEqual(files, want) {
+		t.Fatalf("want files=%v, got %v", want, files)
+	}
+}
+
+func TestDetectLangVB(t *testing.T) {
+	got := detectLang("sample.vb")
+	if got != "vbnet" {
+		t.Fatalf("want vbnet, got %s", got)
+	}
+}
+
+func TestDetectLangSQL(t *testing.T) {
+	got := detectLang("schema.sql")
+	if got != "sql" {
+		t.Fatalf("want sql, got %s", got)
+	}
+}
+
 func mustWrite(t *testing.T, path, body string) {
 	t.Helper()
 	if err := os.MkdirAll(filepath.Dir(path), 0o755); err != nil {
