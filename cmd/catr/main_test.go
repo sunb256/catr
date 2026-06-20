@@ -98,6 +98,66 @@ func TestParseOptionsLevelAfterRoot(t *testing.T) {
 	}
 }
 
+func TestParseOptionsPositionalFiles(t *testing.T) {
+	opts, err := parseOptions([]string{"a.txt", "b.txt"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if opts.root != "." {
+		t.Fatalf("want root=., got %s", opts.root)
+	}
+	want := []string{"a.txt", "b.txt"}
+	if !reflect.DeepEqual(opts.files, want) {
+		t.Fatalf("want files=%v, got %v", want, opts.files)
+	}
+}
+
+func TestParseOptionsSingleFile(t *testing.T) {
+	root := t.TempDir()
+	path := filepath.Join(root, "a.txt")
+	mustWrite(t, path, "a")
+
+	wd, err := os.Getwd()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Chdir(root); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() {
+		if err := os.Chdir(wd); err != nil {
+			t.Fatal(err)
+		}
+	})
+
+	opts, err := parseOptions([]string{"a.txt"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if opts.root != "." {
+		t.Fatalf("want root=., got %s", opts.root)
+	}
+	want := []string{"a.txt"}
+	if !reflect.DeepEqual(opts.files, want) {
+		t.Fatalf("want files=%v, got %v", want, opts.files)
+	}
+}
+
+func TestResolveArgsPositionalFilesOverrideConfig(t *testing.T) {
+	root, files := resolveArgs(
+		[]string{"a.txt", "b.txt"},
+		nil,
+		[]string{"config.txt"},
+	)
+	if root != "." {
+		t.Fatalf("want root=., got %s", root)
+	}
+	want := []string{"a.txt", "b.txt"}
+	if !reflect.DeepEqual(files, want) {
+		t.Fatalf("want files=%v, got %v", want, files)
+	}
+}
+
 func TestDetectLangVB(t *testing.T) {
 	got := detectLang("sample.vb")
 	if got != "vbnet" {

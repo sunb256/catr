@@ -43,22 +43,49 @@ func parseOptions(args []string) (options, error) {
 	fs := flag.NewFlagSet("catr", flag.ContinueOnError)
 	fs.SetOutput(os.Stderr)
 	level := fs.Int("l", cfg.level, "max directory depth")
-	var files listFlag
-	if len(cfg.files) > 0 {
-		files = append(files, cfg.files...)
-	}
-	fs.Var(&files, "f", "target files")
+	var cliFiles listFlag
+	fs.Var(&cliFiles, "f", "target files")
 	if err := fs.Parse(args); err != nil {
 		return options{}, err
-	}
-	root := "."
-	if fs.NArg() > 0 {
-		root = fs.Arg(0)
 	}
 	if *level < 0 {
 		return options{}, errors.New("-l must be >= 0")
 	}
+	root, files := resolveArgs(fs.Args(), cliFiles, cfg.files)
 	return options{root: root, level: *level, files: files}, nil
+}
+
+func resolveArgs(pos []string, cliFiles []string, cfgFiles []string) (string, []string) {
+	root := "."
+	if len(pos) == 0 {
+		return root, pickFiles(cliFiles, cfgFiles)
+	}
+	if len(pos) > 1 {
+		files := append([]string{}, cliFiles...)
+		return root, append(files, pos...)
+	}
+	if len(cliFiles) > 0 {
+		return pos[0], cliFiles
+	}
+	if isFile(pos[0]) {
+		return root, []string{pos[0]}
+	}
+	return pos[0], cfgFiles
+}
+
+func pickFiles(cliFiles []string, cfgFiles []string) []string {
+	if len(cliFiles) > 0 {
+		return cliFiles
+	}
+	return cfgFiles
+}
+
+func isFile(path string) bool {
+	info, err := os.Stat(path)
+	if err != nil {
+		return false
+	}
+	return !info.IsDir()
 }
 
 func reorderArgs(args []string) []string {

@@ -45,11 +45,13 @@ catr -f go.mod .
 
 ```bash
 catr [path] [-l depth] [-f file ...]
+catr file1 file2 ...
 ```
 
 - `path`: target directory (default: `.`)
 - `-l`: max depth (`0` means unlimited)
 - `-f`: select specific files (can be repeated)
+- `file1 file2 ...`: print only those files under the current directory
 
 ## Examples
 
@@ -66,6 +68,12 @@ catr . -l 2
 ```
 
 Specific files:
+
+```bash
+catr go.mod cmd/catr/main.go
+```
+
+Specific files with `-f`:
 
 ```bash
 catr -f go.mod -f cmd/catr/main.go .
