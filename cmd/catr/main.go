@@ -12,21 +12,30 @@ import (
 	"strings"
 )
 
+const version = "0.2.0"
+
 type config struct {
-	level int
-	files []string
+	level    int
+	files    []string
+	excludes []string
 }
 
 type options struct {
-	root  string
-	level int
-	files []string
+	root     string
+	level    int
+	files    []string
+	excludes []string
+	version  bool
 }
 
 func main() {
 	opts, err := parseOptions(os.Args[1:])
 	if err != nil {
 		exitErr(err)
+	}
+	if opts.version {
+		fmt.Println(versionString())
+		return
 	}
 	paths, err := collectTargets(opts)
 	if err != nil {
@@ -45,6 +54,9 @@ func parseOptions(args []string) (options, error) {
 	level := fs.Int("l", cfg.level, "max directory depth")
 	var cliFiles listFlag
 	fs.Var(&cliFiles, "f", "target files")
+	var cliExcludes listFlag
+	fs.Var(&cliExcludes, "e", "exclude files or directories")
+	showVersion := fs.Bool("version", false, "print version")
 	if err := fs.Parse(args); err != nil {
 		return options{}, err
 	}
@@ -52,7 +64,14 @@ func parseOptions(args []string) (options, error) {
 		return options{}, errors.New("-l must be >= 0")
 	}
 	root, files := resolveArgs(fs.Args(), cliFiles, cfg.files)
-	return options{root: root, level: *level, files: files}, nil
+	return options{
+		root: root, level: *level, files: files,
+		excludes: pickExcludes(cfg.excludes, cliExcludes), version: *showVersion,
+	}, nil
+}
+
+func versionString() string {
+	return "catr " + version
 }
 
 func resolveArgs(pos []string, cliFiles []string, cfgFiles []string) (string, []string) {
@@ -63,6 +82,10 @@ func resolveArgs(pos []string, cliFiles []string, cfgFiles []string) (string, []
 	if len(pos) > 1 {
 		files := append([]string{}, cliFiles...)
 		return root, append(files, pos...)
+	}
+	if isPattern(pos[0]) {
+		files := append([]string{}, cliFiles...)
+		return root, append(files, pos[0])
 	}
 	if len(cliFiles) > 0 {
 		return pos[0], cliFiles
@@ -80,6 +103,11 @@ func pickFiles(cliFiles []string, cfgFiles []string) []string {
 	return cfgFiles
 }
 
+func pickExcludes(cfgExcludes, cliExcludes []string) []string {
+	excludes := append([]string{}, cfgExcludes...)
+	return append(excludes, cliExcludes...)
+}
+
 func isFile(path string) bool {
 	info, err := os.Stat(path)
 	if err != nil {
@@ -93,7 +121,7 @@ func reorderArgs(args []string) []string {
 	pos := []string{}
 	for i := 0; i < len(args); i++ {
 		arg := args[i]
-		if arg == "-f" || arg == "-l" {
+		if arg == "-e" || arg == "-f" || arg == "-l" {
 			opts = append(opts, arg)
 			if i+1 < len(args) {
 				i++
@@ -101,7 +129,7 @@ func reorderArgs(args []string) []string {
 			}
 			continue
 		}
-		if strings.HasPrefix(arg, "-f=") || strings.HasPrefix(arg, "-l=") {
+		if strings.HasPrefix(arg, "-e=") || strings.HasPrefix(arg, "-f=") || strings.HasPrefix(arg, "-l=") {
 			opts = append(opts, arg)
 			continue
 		}
@@ -120,13 +148,117 @@ func collectTargets(opts options) ([]string, error) {
 		return nil, err
 	}
 	if len(opts.files) > 0 {
-		return collectFromFiles(absRoot, opts.files)
+		return collectSelected(absRoot, opts.level, opts.files, opts.excludes)
 	}
 	ign, err := loadIgnore(absRoot)
 	if err != nil {
 		return nil, err
 	}
-	return walkFiles(absRoot, opts.level, ign)
+	return walkFilesExcept(absRoot, opts.level, ign, opts.excludes)
+}
+
+func collectSelected(root string, level int, names, excludes []string) ([]string, error) {
+	files, patterns := splitTargets(names)
+	out, err := collectFromFiles(root, files)
+	if err != nil || len(patterns) == 0 {
+		return filterExcluded(root, out, excludes), err
+	}
+	ign, err := loadIgnore(root)
+	if err != nil {
+		return nil, err
+	}
+	candidates, err := walkFilesExcept(root, level, ign, excludes)
+	if err != nil {
+		return nil, err
+	}
+	out = filterExcluded(root, out, excludes)
+	return mergePaths(out, filterPatterns(root, candidates, patterns)), nil
+}
+
+func filterExcluded(root string, paths, excludes []string) []string {
+	out := []string{}
+	for _, path := range paths {
+		rel, err := filepath.Rel(root, path)
+		if err != nil || matchesExclude(filepath.ToSlash(rel), excludes) {
+			continue
+		}
+		out = append(out, path)
+	}
+	return out
+}
+
+func splitTargets(names []string) ([]string, []string) {
+	files := []string{}
+	patterns := []string{}
+	for _, name := range names {
+		if isPattern(name) {
+			patterns = append(patterns, normalizePattern(name))
+			continue
+		}
+		files = append(files, name)
+	}
+	return files, patterns
+}
+
+func isPattern(name string) bool {
+	return strings.Contains(name, "*")
+}
+
+func filterPatterns(root string, paths []string, patterns []string) []string {
+	out := []string{}
+	for _, path := range paths {
+		rel, err := filepath.Rel(root, path)
+		if err != nil {
+			continue
+		}
+		if matchesAny(filepath.ToSlash(rel), patterns) {
+			out = append(out, path)
+		}
+	}
+	return out
+}
+
+func matchesAny(path string, patterns []string) bool {
+	for _, pattern := range patterns {
+		if matchPath(strings.Split(pattern, "/"), strings.Split(path, "/")) {
+			return true
+		}
+	}
+	return false
+}
+
+func matchPath(pattern []string, path []string) bool {
+	if len(pattern) == 0 {
+		return len(path) == 0
+	}
+	if pattern[0] == "**" {
+		for i := 0; i <= len(path); i++ {
+			if matchPath(pattern[1:], path[i:]) {
+				return true
+			}
+		}
+		return false
+	}
+	if len(path) == 0 {
+		return false
+	}
+	ok, err := filepath.Match(pattern[0], path[0])
+	return err == nil && ok && matchPath(pattern[1:], path[1:])
+}
+
+func mergePaths(groups ...[]string) []string {
+	seen := map[string]bool{}
+	out := []string{}
+	for _, paths := range groups {
+		for _, path := range paths {
+			if !seen[path] {
+				seen[path] = true
+				out = append(out, path)
+			}
+		}
+	}
+	sort.Strings(out)
+	return out
 }
 
 func collectFromFiles(root string, files []string) ([]string, error) {
@@ -160,6 +292,10 @@ func collectFromFiles(root string, files []string) ([]string, error) {
 }
 
 func walkFiles(root string, maxDepth int, ign []string) ([]string, error) {
+	return walkFilesExcept(root, maxDepth, ign, nil)
+}
+
+func walkFilesExcept(root string, maxDepth int, ign, excludes []string) ([]string, error) {
 	out := []string{}
 	err := filepath.WalkDir(root, func(path string, d fs.DirEntry, err error) error {
 		if err != nil {
@@ -173,7 +309,7 @@ func walkFiles(root string, maxDepth int, ign []string) ([]string, error) {
 			return nil
 		}
 		rel = filepath.ToSlash(rel)
-		if shouldSkip(rel, d.IsDir(), ign) {
+		if shouldSkip(rel, d.IsDir(), ign) || matchesExclude(rel, excludes) {
 			if d.IsDir() {
 				return filepath.SkipDir
 			}
@@ -195,6 +331,43 @@ func walkFiles(root string, maxDepth int, ign []string) ([]string, error) {
 	}
 	sort.Strings(out)
 	return out, nil
+}
+
+func matchesExclude(rel string, patterns []string) bool {
+	for _, raw := range patterns {
+		pattern := strings.TrimSuffix(normalizePattern(raw), "/")
+		if pattern == "" {
+			continue
+		}
+		if excludeMatch(rel, pattern) {
+			return true
+		}
+	}
+	return false
+}
+
+func excludeMatch(rel, pattern string) bool {
+	path := strings.Split(rel, "/")
+	if !strings.Contains(pattern, "/") {
+		return matchName(path, pattern)
+	}
+	parts := strings.Split(pattern, "/")
+	for i := 1; i <= len(path); i++ {
+		if matchPath(parts, path[:i]) {
+			return true
+		}
+	}
+	return false
+}
+
+func matchName(path []string, pattern string) bool {
+	for _, name := range path {
+		ok, err := filepath.Match(pattern, name)
+		if err == nil && ok {
+			return true
+		}
+	}
+	return false
 }
 
 func printFiles(paths []string) error {
@@ -296,7 +469,12 @@ func readConfig() (config, error) {
 	if err != nil {
 		return cfg, err
 	}
-	path := filepath.Join(home, ".config", "catr.toml")
+	path := filepath.Join(home, ".config", "catr", "config.toml")
+	return readConfigFile(path)
+}
+
+func readConfigFile(path string) (config, error) {
+	cfg := config{}
 	b, err := os.ReadFile(path)
 	if errors.Is(err, os.ErrNotExist) {
 		return cfg, nil
@@ -320,6 +498,10 @@ func parseToml(s string) config {
 		}
 		if strings.HasPrefix(line, "files") {
 			cfg.files = parseFiles(line)
+			continue
+		}
+		if strings.HasPrefix(line, "excludes") {
+			cfg.excludes = parseFiles(line)
 		}
 	}
 	return cfg
